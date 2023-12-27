@@ -1,0 +1,63 @@
+version: '2.4'
+
+x-app:
+  &app
+  build:
+    context: .dockerdev
+    dockerfile: Dockerfile
+    args:
+      DISTRO_NAME: 'bookworm'
+      RUBY_VERSION: '3.2.2'
+      BUNDLER_VERSION: '2.5.3'
+  image: reproduce_segfault:7.1.2_3.2.2
+  environment:
+    &env
+    RAILS_ENV: ${RAILS_ENV:-development}
+  tmpfs:
+    - /tmp
+    - /app/tmp/pids
+
+x-backend:
+  &backend
+  <<: *app
+  stdin_open: true
+  tty: true
+  volumes:
+    - .:/app:cached
+    - bundle:/usr/local/bundle
+    - rails_cache:/app/tmp/cache
+    - assets_builds:/app/assets/builds
+    - .dockerdev/.psqlrc:/root/.psqlrc:ro
+    - .dockerdev/.bashrc:/root/.bashrc:ro
+    - .dockerdev/.irbrc:/root/.irbrc:ro
+  environment:
+    &backend_environment
+    <<: *env
+    RUBY_YJIT_ENABLE: 1
+    MALLOC_ARENA_MAX: 2
+    WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    BOOTSNAP_CACHE_DIR: /usr/local/bundle/_bootsnap
+    XDG_DATA_HOME: /app/tmp/caches
+    BINDING: 0.0.0.0
+    HISTFILE: /usr/local/hist/.bash_history
+    PSQL_HISTFILE: /usr/local/hist/.psql_history
+    IRB_HISTFILE: /usr/local/hst/.irb_history
+    EDITOR: vi
+    CHROME_URL: http://chrome:3333
+
+services:
+  rails:
+    <<: *backend
+    command: bundle exec rails s
+
+  web:
+    <<: *backend
+    command: bin/rails s
+    ports:
+      - '3000:3000'
+      - '35729:35729'
+
+volumes:
+  bundle:
+  assets_builds:
+  rails_cache:
